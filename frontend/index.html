@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seattle Fresh Hop Beer Tracker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-left">
+    <h1>Seattle Fresh Hop Tracker</h1>
+    <span class="subtitle">Fresh hop beer releases from Seattle-area breweries</span>
+  </div>
+  <div class="topbar-right">
+    <span id="lastRefreshed" class="last-refreshed"></span>
+    <label class="force-refresh-label admin-only hidden"><input type="checkbox" id="forceRefresh"> Force re-search all</label>
+    <button id="refreshBtn" class="btn btn-primary admin-only hidden">Refresh</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="today">Today's List</button>
+  <button class="tab-btn" data-tab="calendar">Calendar</button>
+  <button class="tab-btn admin-only hidden" data-tab="breweries">Breweries</button>
+</nav>
+
+<main>
+  <div id="refreshStatus" class="refresh-status hidden"></div>
+  <details id="refreshDetails" class="refresh-details hidden">
+    <summary id="refreshDetailsSummary">Per-brewery results</summary>
+    <ul id="refreshDetailsList"></ul>
+  </details>
+
+  <section id="tab-today" class="tab-panel active">
+    <div class="manual-add-toggle admin-only hidden">
+      <button id="toggleManualForm" class="btn btn-ghost">+ Add a release manually</button>
+    </div>
+    <form id="manualReleaseForm" class="manual-release-form hidden">
+      <input type="text" id="manualBrewery" placeholder="Brewery name" required list="breweryNames">
+      <datalist id="breweryNames"></datalist>
+      <input type="text" id="manualBeer" placeholder="Beer name" required>
+      <input type="date" id="manualDate" required>
+      <input type="text" id="manualUrl" placeholder="Source link (optional)">
+      <button type="submit" class="btn btn-secondary">Add</button>
+    </form>
+
+    <div id="todayEmpty" class="empty-state hidden">
+      No fresh hop beers currently on draft. Click Refresh to check for new releases.
+    </div>
+    <div id="todayList" class="card-grid"></div>
+  </section>
+
+  <section id="tab-calendar" class="tab-panel">
+    <div class="calendar-controls">
+      <button id="prevMonth" class="btn btn-ghost">&laquo; Prev</button>
+      <h2 id="calendarMonthLabel"></h2>
+      <button id="nextMonth" class="btn btn-ghost">Next &raquo;</button>
+    </div>
+    <div id="calendarGrid" class="calendar-grid"></div>
+    <div id="calendarDetail" class="calendar-detail hidden"></div>
+  </section>
+
+  <section id="tab-breweries" class="tab-panel">
+    <div class="breweries-intro">
+      <p>Seed list of breweries the refresh pipeline searches. Add or remove breweries any time.</p>
+      <p class="hint">
+        Untappd URL confirms real on-draft beers (Track A, no LLM). Instagram search only looks for
+        upcoming teasers (Track B). A brewery with no Untappd URL only gets IG-based "upcoming" checks.
+      </p>
+      <form id="addBreweryForm" class="add-brewery-form">
+        <input type="text" id="newBreweryName" placeholder="Brewery name" required>
+        <input type="text" id="newBreweryCity" placeholder="City (optional)">
+        <button type="submit" class="btn btn-secondary">Add</button>
+      </form>
+      <div class="settings-row">
+        <label for="expirationDays">Days a beer stays "on draft" after release:</label>
+        <input type="number" id="expirationDays" min="1" max="365" style="width:70px">
+      </div>
+      <div class="settings-row">
+        <label for="skipRecentDays">Skip a brewery on refresh if searched within (days):</label>
+        <input type="number" id="skipRecentDays" min="0" max="90" style="width:70px">
+        <button id="saveSettingsBtn" class="btn btn-ghost">Save</button>
+      </div>
+    </div>
+    <table class="brewery-table">
+      <thead><tr><th>Name</th><th>City</th><th>Untappd URL</th><th>Last Untappd check</th><th>Last IG search</th><th>Active</th><th></th></tr></thead>
+      <tbody id="breweryTableBody"></tbody>
+    </table>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+flask==3.0.3
+requests==2.32.3
+anthropic==0.125.0
+python-dotenv==1.0.1
+beautifulsoup4==4.15.0
+curl_cffi==0.13.0
