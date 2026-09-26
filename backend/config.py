@@ -32,7 +32,16 @@ FRESH_HOP_KEYWORDS = ["fresh hop", "wet hop", "harvest ale"]
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
-FLASK_PORT = int(os.environ.get("FLASK_PORT", "5050"))
+
+# PORT is the convention hosts like Render inject automatically; FLASK_PORT
+# is this app's own local override (.env). PORT wins when both are set, so
+# a Render deploy doesn't need any app-specific config beyond ADMIN_KEY/etc.
+FLASK_PORT = int(os.environ.get("PORT", os.environ.get("FLASK_PORT", "5050")))
+
+# Render (and most PaaS hosts) only route traffic to 0.0.0.0, not 127.0.0.1
+# — binding to loopback would make the app unreachable from outside the
+# container even though it "works" in the deploy logs.
+HOST = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
 
 # Gates refresh/manual-entry/brewery-and-settings-edit endpoints. Read-only
 # endpoints (today/calendar/brewery listing) stay open to anyone. Must be
