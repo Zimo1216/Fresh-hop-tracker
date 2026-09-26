@@ -188,4 +188,4 @@ if __name__ == "__main__":
     # Prefer `python run.py` (loads .env first); this is a fallback for
     # running the module directly.
     create_app()
-    app.run(host=config.HOST, port=config.FLASK_PORT, debug=config.HOST == "127.0.0.1")
+    app.run(host=config.HOST, port=config.FLASK_PORT, debug=config.IS_LOCAL_DEV)

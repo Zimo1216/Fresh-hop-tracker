@@ -33,15 +33,21 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
 
-# PORT is the convention hosts like Render inject automatically; FLASK_PORT
-# is this app's own local override (.env). PORT wins when both are set, so
-# a Render deploy doesn't need any app-specific config beyond ADMIN_KEY/etc.
-FLASK_PORT = int(os.environ.get("PORT", os.environ.get("FLASK_PORT", "5050")))
+# PORT is the convention hosts like Render inject automatically (a dynamic
+# value, e.g. 10000+ — never assume it's fixed); FLASK_PORT is this app's
+# own local override (.env). PORT wins when both are set. `or` (not a
+# second .get default) so an empty-string PORT doesn't win over FLASK_PORT.
+FLASK_PORT = int(os.environ.get("PORT") or os.environ.get("FLASK_PORT") or "5050")
 
-# Render (and most PaaS hosts) only route traffic to 0.0.0.0, not 127.0.0.1
-# — binding to loopback would make the app unreachable from outside the
-# container even though it "works" in the deploy logs.
-HOST = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+# Local dev must opt IN to 127.0.0.1 by setting APP_ENV=local (run.py's own
+# .env does this) — every other case, including a failed/ambiguous check,
+# defaults to 0.0.0.0. Getting this backwards is exactly what silently
+# broke the Render deploy before: a "look for cloud signals, else assume
+# local" check defaults to the unreachable address the moment its cloud
+# signal doesn't fire for whatever reason (stale deploy, renamed env var,
+# different host). Binding 0.0.0.0 locally is harmless either way.
+IS_LOCAL_DEV = os.environ.get("APP_ENV", "").strip().lower() == "local"
+HOST = "127.0.0.1" if IS_LOCAL_DEV else "0.0.0.0"
 
 # Gates refresh/manual-entry/brewery-and-settings-edit endpoints. Read-only
 # endpoints (today/calendar/brewery listing) stay open to anyone. Must be
