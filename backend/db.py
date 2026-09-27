@@ -479,3 +479,38 @@ def delete_brewery(brewery_id):
         conn.commit()
     finally:
         conn.close()
+
+
+def get_backend_info():
+    """Self-serve diagnostic for "is this actually talking to Turso right
+    now" — exposed via GET /api/admin/db-status. Answers it by actually
+    running a query, not just by checking whether the env var string looks
+    non-empty (that distinction is exactly what silently broke persistence
+    once already: TURSO_DATABASE_URL not really reaching the process,
+    while the app itself looked fine because it fell back to a local file
+    without erroring). Never returns the auth token.
+    """
+    from urllib.parse import urlparse
+
+    using_turso = bool(config.TURSO_DATABASE_URL)
+    info = {
+        "backend": "turso" if using_turso else "local_file",
+        "turso_env_var_set": using_turso,
+    }
+    if using_turso:
+        info["turso_host"] = urlparse(config.TURSO_DATABASE_URL).netloc
+    else:
+        info["local_db_path"] = str(config.DB_PATH)
+
+    try:
+        conn = get_conn()
+        try:
+            info["breweries_count"] = conn.execute("SELECT COUNT(*) c FROM breweries").fetchone()["c"]
+            info["releases_count"] = conn.execute("SELECT COUNT(*) c FROM releases").fetchone()["c"]
+            info["connection_ok"] = True
+        finally:
+            conn.close()
+    except Exception as e:
+        info["connection_ok"] = False
+        info["connection_error"] = str(e)
+    return info

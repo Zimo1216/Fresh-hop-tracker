@@ -45,6 +45,18 @@ def api_admin_verify():
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/db-status", methods=["GET"])
+@require_admin
+def api_db_status():
+    """Answers "is this actually connected to Turso right now" with a live
+    query, not just an env-var presence check — visit this on the real
+    deployed URL (with ?admin_key=... once, or after already being in admin
+    mode) to confirm persistence is really wired up, instead of guessing
+    from symptoms after the next sleep/restart.
+    """
+    return jsonify(db.get_backend_info())
+
+
 @app.route("/api/today")
 def api_today():
     return jsonify(db.list_today_releases())
