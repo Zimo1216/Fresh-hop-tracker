@@ -1,8 +1,12 @@
 const state = {
   calendarYear: new Date().getFullYear(),
   calendarMonth: new Date().getMonth(), // 0-indexed
+  calendarView: "month", // "month" | "list" — forced to "list" under MOBILE_BREAKPOINT regardless
   allReleases: [],
 };
+
+const CAL_MAX_ITEMS_PER_CELL = 3;
+const MOBILE_BREAKPOINT = 768;
 
 function $(sel) { return document.querySelector(sel); }
 function $all(sel) { return document.querySelectorAll(sel); }
@@ -94,18 +98,24 @@ async function loadToday() {
   }
   empty.classList.add("hidden");
   for (const r of releases) {
-    const card = document.createElement("div");
-    card.className = "beer-card";
-    card.innerHTML = `
-      <div class="brewery">${escapeHtml(r.brewery_name)}</div>
-      <div class="beer-name">${escapeHtml(r.beer_name)}</div>
-      <div class="release-date">Released ${formatDate(r.release_date)}</div>
-      <div><span class="status-pill status-${r.status}">${labelForStatus(r.status)}</span>${sourceBadge(r.source_type)}</div>
-      ${r.source_url ? `<a class="source-link" href="${escapeAttr(r.source_url)}" target="_blank" rel="noopener">Source &rarr;</a>` : ""}
-      ${r.evidence_snippet ? `<div class="evidence-snippet">"${escapeHtml(r.evidence_snippet)}"</div>` : ""}
-    `;
-    list.appendChild(card);
+    list.appendChild(buildBeerCard(r));
   }
+}
+
+// Shared card markup used by Today's List, the calendar list view, and the
+// day-detail modal — keeps all three in sync instead of drifting apart.
+function buildBeerCard(r) {
+  const card = document.createElement("div");
+  card.className = "beer-card";
+  card.innerHTML = `
+    <div class="brewery">${escapeHtml(r.brewery_name)}</div>
+    <div class="beer-name">${escapeHtml(r.beer_name)}</div>
+    <div class="release-date">Released ${formatDate(r.release_date)}</div>
+    <div><span class="status-pill status-${r.status}">${labelForStatus(r.status)}</span>${sourceBadge(r.source_type)}</div>
+    ${r.source_url ? `<a class="source-link" href="${escapeAttr(r.source_url)}" target="_blank" rel="noopener">Source &rarr;</a>` : ""}
+    ${r.evidence_snippet ? `<div class="evidence-snippet">"${escapeHtml(r.evidence_snippet)}"</div>` : ""}
+  `;
+  return card;
 }
 
 // ---------- Calendar ----------
@@ -115,11 +125,47 @@ async function loadCalendarData() {
   renderCalendar();
 }
 
+function isMobileViewport() {
+  return window.innerWidth <= MOBILE_BREAKPOINT;
+}
+
+// Mobile always gets the list view regardless of the toggle's own
+// selection — the grid simply doesn't work at that width (per the design
+// brief), so there's no point offering it there.
+function effectiveCalendarView() {
+  return isMobileViewport() ? "list" : state.calendarView;
+}
+
+function releasesByDateForMonth(year, month) {
+  const byDate = {};
+  for (const r of state.allReleases) {
+    const [ry, rm] = r.release_date.split("-").map(Number);
+    if (ry === year && rm === month + 1) {
+      if (!byDate[r.release_date]) byDate[r.release_date] = [];
+      byDate[r.release_date].push(r);
+    }
+  }
+  return byDate;
+}
+
 function renderCalendar() {
   const { calendarYear: year, calendarMonth: month } = state;
   const monthLabel = new Date(year, month, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
   $("#calendarMonthLabel").textContent = monthLabel;
 
+  const view = effectiveCalendarView();
+  $("#calendarGrid").classList.toggle("hidden", view !== "month");
+  $("#calendarListView").classList.toggle("hidden", view !== "list");
+
+  const byDate = releasesByDateForMonth(year, month);
+  if (view === "month") {
+    renderCalendarGrid(year, month, byDate);
+  } else {
+    renderCalendarListView(year, month, byDate);
+  }
+}
+
+function renderCalendarGrid(year, month, byDate) {
   const grid = $("#calendarGrid");
   grid.innerHTML = "";
 
@@ -134,13 +180,6 @@ function renderCalendar() {
   const startOffset = firstDay.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const byDate = {};
-  for (const r of state.allReleases) {
-    const key = r.release_date;
-    if (!byDate[key]) byDate[key] = [];
-    byDate[key].push(r);
-  }
-
   for (let i = 0; i < startOffset; i++) {
     const cell = document.createElement("div");
     cell.className = "calendar-cell empty";
@@ -149,44 +188,89 @@ function renderCalendar() {
 
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dayItems = byDate[dateStr] || [];
     const cell = document.createElement("div");
     cell.className = "calendar-cell";
-    const dayItems = byDate[dateStr] || [];
-    let itemsHtml = "";
-    for (const item of dayItems) {
-      itemsHtml += `<div class="cal-item" data-brewery="${escapeAttr(item.brewery_name)}" data-beer="${escapeAttr(item.beer_name)}" data-date="${item.release_date}" data-status="${item.status}" data-url="${escapeAttr(item.source_url || "")}" data-evidence="${escapeAttr(item.evidence_snippet || "")}" data-source="${escapeAttr(item.source_type || "")}">${escapeHtml(item.brewery_name)}: ${escapeHtml(item.beer_name)}</div>`;
-    }
-    cell.innerHTML = `<div class="day-num">${day}</div>${itemsHtml}`;
+
+    // Cap visible items per cell so one busy day can't stretch the whole
+    // week's row height; the rest is one click away via the day modal.
+    const visible = dayItems.slice(0, CAL_MAX_ITEMS_PER_CELL);
+    const overflow = dayItems.length - visible.length;
+    const itemsHtml = visible
+      .map((item) => `<div class="cal-item" data-date="${dateStr}">${escapeHtml(item.brewery_name)}: ${escapeHtml(item.beer_name)}</div>`)
+      .join("");
+    const moreHtml = overflow > 0
+      ? `<button type="button" class="cal-more-btn" data-date="${dateStr}">+${overflow} more &middot; View all</button>`
+      : "";
+
+    cell.innerHTML = `
+      <div class="day-num" data-date="${dateStr}">${day}</div>
+      <div class="cal-items">${itemsHtml}${moreHtml}</div>
+    `;
     grid.appendChild(cell);
   }
 
-  $all(".cal-item").forEach((el) => {
+  grid.querySelectorAll(".cal-item, .cal-more-btn, .day-num").forEach((el) => {
     el.addEventListener("click", () => {
-      showDetail({
-        brewery_name: el.dataset.brewery,
-        beer_name: el.dataset.beer,
-        release_date: el.dataset.date,
-        status: el.dataset.status,
-        source_url: el.dataset.url,
-        evidence_snippet: el.dataset.evidence,
-        source_type: el.dataset.source,
-      });
+      const dateStr = el.dataset.date;
+      const items = byDate[dateStr] || [];
+      if (items.length > 0) openDayModal(dateStr, items);
     });
   });
 }
 
-function showDetail(r) {
-  const detail = $("#calendarDetail");
-  detail.classList.remove("hidden");
-  detail.innerHTML = `
-    <div class="brewery">${escapeHtml(r.brewery_name)}</div>
-    <div class="beer-name">${escapeHtml(r.beer_name)}</div>
-    <div class="release-date">Release date: ${formatDate(r.release_date)}</div>
-    <div><span class="status-pill status-${r.status}">${labelForStatus(r.status)}</span>${sourceBadge(r.source_type)}</div>
-    ${r.source_url ? `<a class="source-link" href="${escapeAttr(r.source_url)}" target="_blank" rel="noopener">Source &rarr;</a>` : "<div class='release-date'>No source link recorded</div>"}
-    ${r.evidence_snippet ? `<div class="evidence-snippet">"${escapeHtml(r.evidence_snippet)}"</div>` : ""}
-  `;
+function renderCalendarListView(year, month, byDate) {
+  const container = $("#calendarListView");
+  container.innerHTML = "";
+  const dates = Object.keys(byDate).sort();
+
+  if (dates.length === 0) {
+    const monthLabel = new Date(year, month, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+    container.innerHTML = `<div class="date-group-empty">No fresh hop releases found for ${monthLabel}.</div>`;
+    return;
+  }
+
+  for (const dateStr of dates) {
+    const weekday = new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", { weekday: "long" });
+    const group = document.createElement("div");
+    group.className = "date-group";
+    group.innerHTML = `<div class="date-group-header">${formatDate(dateStr)} &middot; ${weekday}</div><div class="card-grid date-group-cards"></div>`;
+    const cardsEl = group.querySelector(".date-group-cards");
+    for (const item of byDate[dateStr]) {
+      cardsEl.appendChild(buildBeerCard(item));
+    }
+    container.appendChild(group);
+  }
 }
+
+function openDayModal(dateStr, items) {
+  const weekday = new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", { weekday: "long" });
+  $("#dayModalTitle").textContent =
+    `${formatDate(dateStr)} (${weekday}) — ${items.length} release${items.length === 1 ? "" : "s"}`;
+  const body = $("#dayModalBody");
+  body.innerHTML = "";
+  items.forEach((item) => body.appendChild(buildBeerCard(item)));
+  $("#dayModal").classList.remove("hidden");
+}
+
+$("#dayModalClose").addEventListener("click", () => $("#dayModal").classList.add("hidden"));
+$("#dayModal").addEventListener("click", (e) => {
+  if (e.target.id === "dayModal") $("#dayModal").classList.add("hidden");
+});
+
+$all(".view-toggle-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.calendarView = btn.dataset.view;
+    $all(".view-toggle-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    renderCalendar();
+  });
+});
+
+let calendarResizeTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(calendarResizeTimer);
+  calendarResizeTimer = setTimeout(renderCalendar, 150);
+});
 
 $("#prevMonth").addEventListener("click", () => {
   state.calendarMonth -= 1;

@@ -57,9 +57,21 @@
       <h2 id="calendarMonthLabel"></h2>
       <button id="nextMonth" class="btn btn-ghost">Next &raquo;</button>
     </div>
+    <div class="calendar-view-toggle" id="calendarViewToggle">
+      <button class="view-toggle-btn active" data-view="month">Month view</button>
+      <button class="view-toggle-btn" data-view="list">List view</button>
+    </div>
     <div id="calendarGrid" class="calendar-grid"></div>
-    <div id="calendarDetail" class="calendar-detail hidden"></div>
+    <div id="calendarListView" class="calendar-list-view hidden"></div>
   </section>
+
+  <div id="dayModal" class="modal hidden">
+    <div class="modal-content">
+      <button id="dayModalClose" class="modal-close">&times;</button>
+      <h3 id="dayModalTitle"></h3>
+      <div id="dayModalBody" class="card-grid"></div>
+    </div>
+  </div>
 
   <section id="tab-breweries" class="tab-panel">
     <div class="breweries-intro">
