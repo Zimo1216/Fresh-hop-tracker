@@ -4,3 +4,4 @@ anthropic==0.125.0
 python-dotenv==1.0.1
 beautifulsoup4==4.15.0
 curl_cffi==0.13.0
+libsql-client==0.3.1

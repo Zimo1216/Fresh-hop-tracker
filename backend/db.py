@@ -1,7 +1,8 @@
 import json
 import re
-import sqlite3
 from datetime import date, datetime, timedelta
+
+import libsql_client
 
 from . import config
 
@@ -50,12 +51,69 @@ def _normalize_beer_name(name: str) -> str:
     return re.sub(r"\s+", " ", name).strip()
 
 
+class _CursorLike:
+    """Just enough of sqlite3's cursor surface for the rest of this file:
+    .fetchall() / .fetchone() over already-materialized dict rows, and
+    .lastrowid from the last INSERT."""
+
+    __slots__ = ("_rows", "lastrowid")
+
+    def __init__(self, rows, lastrowid):
+        self._rows = rows
+        self.lastrowid = lastrowid
+
+    def fetchall(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+
+class _ConnWrapper:
+    """Shim around libsql_client.ClientSync so the rest of this file can
+    keep using the exact sqlite3-shaped calls it always has —
+    conn.execute(sql, params).fetchall(), row["col"], conn.commit(),
+    conn.close() — unchanged, whether talking to a local SQLite file or a
+    remote Turso database. Both go through libsql_client; only the URL
+    passed to get_conn() differs, verified against a local `file:` URL
+    (2026-09-27) to behave identically to the remote `libsql://` one for
+    every SQL feature this file uses (params, ALTER TABLE, ON CONFLICT
+    upserts, batch()).
+    """
+
+    __slots__ = ("_client",)
+
+    def __init__(self, client):
+        self._client = client
+
+    def execute(self, sql, params=()):
+        rs = self._client.execute(sql, list(params) if params else None)
+        rows = [row.asdict() for row in rs.rows]
+        return _CursorLike(rows, rs.last_insert_rowid)
+
+    def executescript(self, script):
+        # Only ever called with SCHEMA below: simple `CREATE TABLE ...;`
+        # statements, no semicolons inside string/default-value literals,
+        # so a naive split is safe. batch() runs them atomically.
+        stmts = [s.strip() for s in script.split(";") if s.strip()]
+        self._client.batch(stmts)
+
+    def commit(self):
+        pass  # libsql_client commits each execute()/batch() as it goes
+
+    def close(self):
+        self._client.close()
+
+
 def get_conn():
-    config.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(config.DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    if config.TURSO_DATABASE_URL:
+        client = libsql_client.create_client_sync(
+            url=config.TURSO_DATABASE_URL, auth_token=config.TURSO_AUTH_TOKEN or None
+        )
+    else:
+        config.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        client = libsql_client.create_client_sync(url=f"file:{config.DB_PATH}")
+    return _ConnWrapper(client)
 
 
 def init_db():
@@ -70,27 +128,37 @@ def init_db():
         conn.close()
 
 
+def _try_add_column(conn, table, column, coltype):
+    """ALTER TABLE ADD COLUMN, ignoring the "already exists" case.
+
+    Deliberately not PRAGMA table_info(...)-based: that's a SQLite-session
+    concept, and rather than assume it behaves identically over libSQL's
+    remote (Turso) protocol, just attempt the ALTER and swallow the specific
+    "duplicate column" error SQLite/libSQL both raise when it already
+    exists — verified (2026-09-27) this is the same message text libsql_client
+    surfaces locally, and ALTER TABLE ADD COLUMN itself is core SQL any
+    SQLite-compatible engine supports, so there's nothing Turso-specific to
+    be uncertain about here.
+    """
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+    except Exception as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
+
 def _migrate_schema(conn):
     """Add columns introduced after the initial release to existing DBs.
 
     CREATE TABLE IF NOT EXISTS above only creates missing tables, not
     missing columns on tables that already exist, so new columns need an
-    explicit ALTER TABLE guarded by a PRAGMA table_info check.
+    explicit ALTER TABLE.
     """
-    release_cols = {row["name"] for row in conn.execute("PRAGMA table_info(releases)").fetchall()}
-    if "evidence_snippet" not in release_cols:
-        conn.execute("ALTER TABLE releases ADD COLUMN evidence_snippet TEXT")
-    if "source_type" not in release_cols:
-        conn.execute("ALTER TABLE releases ADD COLUMN source_type TEXT NOT NULL DEFAULT 'instagram'")
-
-    brewery_cols = {row["name"] for row in conn.execute("PRAGMA table_info(breweries)").fetchall()}
-    if "last_refreshed_at" not in brewery_cols:
-        conn.execute("ALTER TABLE breweries ADD COLUMN last_refreshed_at TEXT")
-    if "untappd_url" not in brewery_cols:
-        conn.execute("ALTER TABLE breweries ADD COLUMN untappd_url TEXT")
-    if "last_untappd_checked_at" not in brewery_cols:
-        conn.execute("ALTER TABLE breweries ADD COLUMN last_untappd_checked_at TEXT")
-
+    _try_add_column(conn, "releases", "evidence_snippet", "TEXT")
+    _try_add_column(conn, "releases", "source_type", "TEXT NOT NULL DEFAULT 'instagram'")
+    _try_add_column(conn, "breweries", "last_refreshed_at", "TEXT")
+    _try_add_column(conn, "breweries", "untappd_url", "TEXT")
+    _try_add_column(conn, "breweries", "last_untappd_checked_at", "TEXT")
     conn.commit()
 
 

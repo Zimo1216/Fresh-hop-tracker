@@ -53,3 +53,13 @@ HOST = "127.0.0.1" if IS_LOCAL_DEV else "0.0.0.0"
 # endpoints (today/calendar/brewery listing) stay open to anyone. Must be
 # set for admin features to work at all — see require_admin() in app.py.
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
+
+# Turso (remote libSQL) connection. When both are set, db.py talks to that
+# database over the network instead of the local SQLite file — this is
+# what makes data survive Render's ephemeral filesystem across
+# deploys/restarts/sleep. When either is missing, db.py falls back to a
+# local file (see get_conn() in db.py for why that fallback is safe: both
+# paths go through the exact same libsql_client library, just pointed at a
+# different URL, so there's no separate code path to drift out of sync).
+TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL", "")
+TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")

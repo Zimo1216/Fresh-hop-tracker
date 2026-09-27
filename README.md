@@ -96,6 +96,51 @@ configured, as long as breweries have an Untappd URL set.
   gate, not a full login system — good enough to keep casual visitors from
   triggering paid API calls, not bank-grade security.
 
+### Database: local file vs. Turso (persistent cloud)
+
+By default the app stores data in a local SQLite file (`data/fresh_hop.db`).
+That's fine for local dev, but **on a host with an ephemeral filesystem
+(e.g. Render's free tier), that file — and every release you've ever
+refreshed — gets wiped on every deploy, restart, or sleep/wake cycle.**
+
+To persist data instead, point the app at a free [Turso](https://turso.tech)
+(cloud SQLite-compatible, libSQL) database:
+
+1. Install the CLI and sign up/log in:
+   ```bash
+   curl -sSfL https://get.tur.so/install.sh | bash
+   turso auth signup   # or: turso auth login
+   ```
+2. Create a database and get its connection details:
+   ```bash
+   turso db create fresh-hop-tracker
+   turso db show fresh-hop-tracker --url        # -> TURSO_DATABASE_URL
+   turso db tokens create fresh-hop-tracker      # -> TURSO_AUTH_TOKEN
+   ```
+3. Put both values in `.env`:
+   ```
+   TURSO_DATABASE_URL=libsql://fresh-hop-tracker-<your-username>.turso.io
+   TURSO_AUTH_TOKEN=<the long token string>
+   ```
+4. If you already have data in the local file worth keeping, copy it over
+   once:
+   ```bash
+   python scripts/migrate_to_turso.py
+   ```
+
+That's it — `backend/db.py` picks up the two env vars automatically and
+talks to Turso instead of the local file; nothing else in the app changes.
+**Leave both blank** to keep using the local file (this is also what
+happens automatically if you forget to set one of the two).
+
+**Deploying this yourself?** Whoever runs this app in production needs to
+set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` (plus `ANTHROPIC_API_KEY`,
+`TAVILY_API_KEY`, `ADMIN_KEY`) as actual environment variables on that host
+— `.env` is gitignored and never gets deployed with the code. On Render:
+Dashboard → your service → Environment → add each one. Do **not** set
+`APP_ENV=local` there — its absence is what makes the server bind `0.0.0.0`
+(see `backend/config.py`).
+
 ## Run
 
 ```bash
@@ -107,6 +152,15 @@ Then open http://127.0.0.1:5050 in your browser.
 
 ## Notes / limitations
 
+- **Why `libsql-client` and not the other Turso Python packages**: `libsql`/
+  `libsql-experimental` (the sqlite3-drop-in one) needs a compiled Rust
+  extension with no prebuilt wheel for this project's Python version —
+  it failed to build locally from source. `libsql-client` is pure Python
+  (`py3-none-any` wheel), so it installs reliably everywhere, including
+  Render's build environment. It also transparently supports a local
+  `file:` URL, so `backend/db.py` uses the exact same client/code path for
+  both local dev and Turso — there's no separate "local mode" to drift out
+  of sync with the real one.
 - **Untappd blocks plain `requests`**: Untappd sits behind Cloudflare bot
   management that TLS-fingerprints Python's `requests`/urllib3 and serves it
   a JS challenge page, even with a convincing User-Agent header (verified —
