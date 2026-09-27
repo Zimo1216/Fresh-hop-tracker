@@ -252,3 +252,22 @@ main { padding: 24px 28px 60px; max-width: 1000px; margin: 0 auto; }
 .source-badge-untappd { background: #d9ecd0; color: #3d5c2f; }
 .source-badge-instagram { background: #e6dbf0; color: #6a3f96; }
 .source-badge-manual { background: #ecebe6; color: var(--text-muted); }
+
+.site-footer {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 18px 28px 32px;
+  border-top: 1px solid var(--border);
+}
+.site-footer .disclaimer {
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+  max-width: 720px;
+}
+.site-footer .author-credit {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin: 0;
+}
