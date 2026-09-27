@@ -107,9 +107,15 @@ class _ConnWrapper:
 
 def get_conn():
     if config.TURSO_DATABASE_URL:
-        client = libsql_client.create_client_sync(
-            url=config.TURSO_DATABASE_URL, auth_token=config.TURSO_AUTH_TOKEN or None
-        )
+        # `turso db show --url` gives a libsql://... URL, which libsql_client
+        # maps to the WebSocket (wss://) Hrana transport. That transport's
+        # handshake reliably failed (400 Invalid response status) against
+        # this database/region when tested 2026-09-27; the HTTP-based Hrana
+        # transport against the identical host works fine, so rewrite the
+        # scheme rather than making every .env require an unintuitive
+        # non-standard URL.
+        url = config.TURSO_DATABASE_URL.replace("libsql://", "https://", 1)
+        client = libsql_client.create_client_sync(url=url, auth_token=config.TURSO_AUTH_TOKEN or None)
     else:
         config.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         client = libsql_client.create_client_sync(url=f"file:{config.DB_PATH}")
@@ -129,22 +135,27 @@ def init_db():
 
 
 def _try_add_column(conn, table, column, coltype):
-    """ALTER TABLE ADD COLUMN, ignoring the "already exists" case.
+    """ALTER TABLE ADD COLUMN, skipped if the column already exists.
 
     Deliberately not PRAGMA table_info(...)-based: that's a SQLite-session
-    concept, and rather than assume it behaves identically over libSQL's
-    remote (Turso) protocol, just attempt the ALTER and swallow the specific
-    "duplicate column" error SQLite/libSQL both raise when it already
-    exists — verified (2026-09-27) this is the same message text libsql_client
-    surfaces locally, and ALTER TABLE ADD COLUMN itself is core SQL any
-    SQLite-compatible engine supports, so there's nothing Turso-specific to
-    be uncertain about here.
+    concept and not worth trusting blindly over libSQL's remote protocol.
+    Also deliberately NOT based on catching/parsing the "duplicate column"
+    error message: verified (2026-09-27) that over libsql_client's HTTP
+    transport (needed — see get_conn()'s comment on the WS handshake
+    failing against this Turso database), a SQL error comes back as a raw
+    KeyError with no usable message at all, not a LibsqlError with
+    "duplicate column" in it like the local file / WS transport gives. So
+    instead of attempting the ALTER and inspecting whatever error each
+    transport happens to raise, probe for the column with a harmless SELECT
+    first and only ALTER if that fails — this never depends on error
+    message text or exception type at all.
     """
     try:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
-    except Exception as e:
-        if "duplicate column" not in str(e).lower():
-            raise
+        conn.execute(f"SELECT {column} FROM {table} LIMIT 1")
+        return  # column already exists
+    except Exception:
+        pass
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
 
 
 def _migrate_schema(conn):
