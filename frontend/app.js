@@ -11,6 +11,41 @@ const MOBILE_BREAKPOINT = 768;
 function $(sel) { return document.querySelector(sel); }
 function $all(sel) { return document.querySelectorAll(sel); }
 
+// ---------- Age gate ----------
+// Self-declared only (no ID check) — standard practice for this kind of
+// site. Runs independently of admin auth and unconditionally for every
+// visitor, admin or not: the overlay is visible by default in the HTML
+// itself, so even if this script fails to load at all, the gate still
+// blocks the page rather than failing open.
+const AGE_GATE_STORAGE = "freshHopAgeConfirmed";
+
+function initAgeGate() {
+  const gate = $("#ageGate");
+  let alreadyConfirmed = false;
+  try {
+    alreadyConfirmed = localStorage.getItem(AGE_GATE_STORAGE) === "yes";
+  } catch {
+    // Storage blocked (e.g. private browsing) — fall back to asking every
+    // visit rather than silently skipping the gate.
+  }
+  if (alreadyConfirmed) {
+    gate.classList.add("hidden");
+    return;
+  }
+  $("#ageGateConfirm").addEventListener("click", () => {
+    try {
+      localStorage.setItem(AGE_GATE_STORAGE, "yes");
+    } catch {
+      // Nothing to do — worst case they're asked again next visit.
+    }
+    gate.classList.add("hidden");
+  });
+  $("#ageGateLeave").addEventListener("click", () => {
+    window.location.href = "https://www.google.com";
+  });
+}
+initAgeGate();
+
 // ---------- Admin auth ----------
 // Lightweight, single-shared-secret gate: not a real login system. The key
 // only ever travels as the X-Admin-Key header (never a query param on the

@@ -7,6 +7,20 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="ageGate" class="age-gate-overlay">
+  <div class="age-gate-box">
+    <h2>Age Verification</h2>
+    <p>
+      This site tracks fresh hop beer releases from Seattle-area breweries. You must be 21 or older
+      (the legal drinking age in the United States) to view this content.
+    </p>
+    <div class="age-gate-actions">
+      <button id="ageGateConfirm" class="btn btn-primary">I'm 21 or older &mdash; Continue</button>
+      <button id="ageGateLeave" class="btn btn-ghost">Leave</button>
+    </div>
+  </div>
+</div>
+
 <header class="topbar">
   <div class="topbar-left">
     <h1>Seattle Fresh Hop Tracker</h1>
@@ -106,8 +120,10 @@
   <p class="disclaimer">
     Data on this site is gathered by automated web search and AI extraction — it may be incomplete, wrong,
     or out of date. An "On Draft" status does not guarantee a beer is still available; it may already be
-    sold out. Check with the brewery directly before making a trip. This site is provided for reference
-    only and comes with no warranty of accuracy.
+    sold out, so check with the brewery directly before making a trip. This site is not affiliated with,
+    endorsed by, or an official channel for any brewery listed here — it's an independent hobbyist project
+    for informational purposes only. This site is provided for reference only and comes with no warranty
+    of accuracy or completeness.
   </p>
   <p class="author-credit">Author: 死星清洁工 (Xiaohongshu) &middot; barglider (Instagram)</p>
 </footer>
